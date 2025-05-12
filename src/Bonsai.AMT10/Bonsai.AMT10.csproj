@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Title>Bonsai - AMT10 Library</Title>
+    <Description>Bonsai Library for interfacing with AMT10 series quadrature encoders via Arduino.</Description>
+    <PackageTags>Bonsai;AMT10;Encoder;Arduino</PackageTags>
+    <TargetFramework>net472</TargetFramework>
+    <Version>1.0.0</Version>
+    <Authors>Your Name</Authors>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Bonsai.Core" Version="2.7.0" />
+    <PackageReference Include="System.IO.Ports" Version="6.0.0" />
+  </ItemGroup>
+</Project>

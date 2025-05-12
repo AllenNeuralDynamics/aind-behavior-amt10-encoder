@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.7.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:amt="clr-namespace:Bonsai.AMT10;assembly=Bonsai.AMT10"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <!-- AMT10 Encoder Source -->
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="amt:AMT10EncoderSource">
+          <amt:PortName>/dev/tty.usbmodem1</amt:PortName>
+          <amt:BaudRate>9600</amt:BaudRate>
+          <amt:Timeout>500</amt:Timeout>
+          <amt:CountsPerRevolution>8192</amt:CountsPerRevolution>
+          <amt:Debug>false</amt:Debug>
+        </Combinator>
+      </Expression>
+      
+      <!-- Extract Degrees Property -->
+      <Expression xsi:type="MemberSelector">
+        <Selector>Degrees</Selector>
+      </Expression>
+      
+      <!-- Visualize Encoder Position -->
+      <Expression xsi:type="rx:BufferWithCount">
+        <rx:Count>100</rx:Count>
+        <rx:Skip>1</rx:Skip>
+      </Expression>
+      <Expression xsi:type="Visualizer">
+        <Name>Encoder Position</Name>
+      </Expression>
+      
+      <!-- Reset Button -->
+      <Expression xsi:type="io:KeyDown">
+        <io:KeyCode>R</io:KeyCode>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="amt:AMT10ResetEncoder">
+          <amt:PortName>/dev/tty.usbmodem1</amt:PortName>
+          <amt:BaudRate>9600</amt:BaudRate>
+          <amt:Timeout>500</amt:Timeout>
+        </Combinator>
+      </Expression>
+    </Nodes>
+    <Edges>
+      <!-- Connect encoder output to visualization -->
+      <Edge From="0" To="1" />
+      <Edge From="1" To="2" />
+      <Edge From="2" To="3" />
+      
+      <!-- Connect key press to reset encoder -->
+      <Edge From="4" To="5" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

@@ -2,6 +2,7 @@ using System;
 using System.ComponentModel;
 using System.IO.Ports;
 using System.Reactive.Linq;
+using System.Reactive.Disposables;  // Added for Disposable class
 using System.Text.RegularExpressions;
 using System.Threading;
 using Bonsai; // Correct namespace for Source<> class

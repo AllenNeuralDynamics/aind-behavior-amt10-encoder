@@ -1,6 +1,6 @@
 using System;
 
-namespace Bonsai.AMT10
+namespace Aind.Behavior.Amt10Encoder
 {
     /// <summary>
     /// Represents a single reading from an AMT10 quadrature encoder.

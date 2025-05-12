@@ -5,7 +5,7 @@ using System.Reactive.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace Bonsai.AMT10
+namespace Aind.Behavior.Amt10Encoder
 {
     /// <summary>
     /// Represents a source of AMT10 quadrature encoder readings accessed through an Arduino.

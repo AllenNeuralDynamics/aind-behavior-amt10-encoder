@@ -4,7 +4,7 @@ using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Text.RegularExpressions;
 
-namespace Bonsai.AMT10
+namespace Aind.Behavior.Amt10Encoder
 {
     /// <summary>
     /// Provides an operator that resets an AMT10 quadrature encoder counter to zero.

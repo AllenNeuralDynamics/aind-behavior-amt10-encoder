@@ -1,0 +1,80 @@
+name: Tag and Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to NuGet'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  tag-and-publish:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+        
+    - name: Get version from project
+      id: get_version
+      shell: pwsh
+      run: |
+        $xml = [Xml] (Get-Content "src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj")
+        $version = $xml.Project.PropertyGroup.Version
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        
+    - name: Create tag
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const version = '${{ steps.get_version.outputs.version }}'
+          const tagName = `v${version}`
+          
+          // Check if tag already exists
+          try {
+            await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${tagName}`
+            })
+            core.setFailed(`Tag ${tagName} already exists`)
+            return
+          } catch (e) {
+            // Tag doesn't exist, so we can create it
+          }
+          
+          // Get the current commit SHA
+          const { data: refData } = await github.rest.git.getRef({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: 'heads/main'
+          });
+          
+          // Create the tag
+          await github.rest.git.createRef({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: `refs/tags/${tagName}`,
+            sha: refData.object.sha
+          });
+          
+          console.log(`Created tag ${tagName}`)
+          
+    - name: Build solution
+      run: dotnet build src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj -c Release
+      
+    - name: Publish to NuGet
+      if: ${{ github.event.inputs.publish == 'true' }}
+      run: |
+        dotnet nuget push src/Aind.Behavior.Amt10Encoder/bin/Release/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json

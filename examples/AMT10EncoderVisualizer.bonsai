@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <WorkflowBuilder Version="2.7.0"
                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                 xmlns:amt="clr-namespace:Bonsai.AMT10;assembly=Bonsai.AMT10"
+                 xmlns:aind="clr-namespace:Aind.Behavior.Amt10Encoder;assembly=Aind.Behavior.Amt10Encoder"
                  xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
                  xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
                  xmlns="https://bonsai-rx.org/2018/workflow">
@@ -9,12 +9,12 @@
     <Nodes>
       <!-- AMT10 Encoder Source -->
       <Expression xsi:type="Combinator">
-        <Combinator xsi:type="amt:AMT10EncoderSource">
-          <amt:PortName>/dev/tty.usbmodem1</amt:PortName>
-          <amt:BaudRate>9600</amt:BaudRate>
-          <amt:Timeout>500</amt:Timeout>
-          <amt:CountsPerRevolution>8192</amt:CountsPerRevolution>
-          <amt:Debug>false</amt:Debug>
+        <Combinator xsi:type="aind:AMT10EncoderSource">
+          <aind:PortName>/dev/tty.usbmodem1</aind:PortName>
+          <aind:BaudRate>9600</aind:BaudRate>
+          <aind:Timeout>500</aind:Timeout>
+          <aind:CountsPerRevolution>8192</aind:CountsPerRevolution>
+          <aind:Debug>false</aind:Debug>
         </Combinator>
       </Expression>
       
@@ -37,10 +37,10 @@
         <io:KeyCode>R</io:KeyCode>
       </Expression>
       <Expression xsi:type="Combinator">
-        <Combinator xsi:type="amt:AMT10ResetEncoder">
-          <amt:PortName>/dev/tty.usbmodem1</amt:PortName>
-          <amt:BaudRate>9600</amt:BaudRate>
-          <amt:Timeout>500</amt:Timeout>
+        <Combinator xsi:type="aind:AMT10ResetEncoder">
+          <aind:PortName>/dev/tty.usbmodem1</aind:PortName>
+          <aind:BaudRate>9600</aind:BaudRate>
+          <aind:Timeout>500</aind:Timeout>
         </Combinator>
       </Expression>
     </Nodes>

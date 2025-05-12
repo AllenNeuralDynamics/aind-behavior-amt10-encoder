@@ -1,0 +1,44 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+
+    - name: Restore NuGet packages
+      run: nuget restore src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj
+
+    - name: Build solution
+      run: dotnet build src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj -c ${{ matrix.configuration }}
+
+    - name: Upload artifacts
+      if: matrix.configuration == 'Release'
+      uses: actions/upload-artifact@v3
+      with:
+        name: nuget-package
+        path: src/Aind.Behavior.Amt10Encoder/bin/Release/*.nupkg

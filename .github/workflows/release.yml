@@ -1,0 +1,57 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v1
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+
+    - name: Restore NuGet packages
+      run: nuget restore src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj
+
+    - name: Build solution
+      run: dotnet build src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj -c Release
+
+    - name: Get version from tag
+      id: get_version
+      uses: battila7/get-version-action@v2
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.get_version.outputs.version-without-v }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./src/Aind.Behavior.Amt10Encoder/bin/Release/Aind.Behavior.Amt10Encoder.${{ steps.get_version.outputs.version-without-v }}.nupkg
+        asset_name: Aind.Behavior.Amt10Encoder.${{ steps.get_version.outputs.version-without-v }}.nupkg
+        asset_content_type: application/octet-stream

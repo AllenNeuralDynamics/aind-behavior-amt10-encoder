@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Text.RegularExpressions;
+using Bonsai.Reactive; // Added for Sink<> type
 
 namespace Aind.Behavior.Amt10Encoder
 {

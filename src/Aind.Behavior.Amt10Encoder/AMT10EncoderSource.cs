@@ -4,6 +4,7 @@ using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Bonsai.Reactive; // Added for Source<> type
 
 namespace Aind.Behavior.Amt10Encoder
 {

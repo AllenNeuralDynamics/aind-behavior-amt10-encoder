@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Text.RegularExpressions;
-using Bonsai; // Correct namespace for Sink<> class
 
 namespace Aind.Behavior.Amt10Encoder
 {
@@ -53,12 +52,8 @@ namespace Aind.Behavior.Amt10Encoder
                     })
                     {
                         serialPort.Open();
-                        
-                        // Wait for Arduino to initialize
-                        System.Threading.Thread.Sleep(100);
-                        
                         Console.WriteLine("Sending reset command to encoder");
-                        serialPort.Write("2\n"); // Clear encoder command with newline
+                        serialPort.WriteLine("2"); // Clear encoder command
                         
                         // Wait for a response to confirm the reset
                         int attempts = 0;
@@ -67,7 +62,6 @@ namespace Aind.Behavior.Amt10Encoder
                             try
                             {
                                 string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                                Console.WriteLine($"Response: {response}");
                                 
                                 // Check for expected response format with Count field
                                 Match match = Regex.Match(response, ";Count:(-?\\d+)");

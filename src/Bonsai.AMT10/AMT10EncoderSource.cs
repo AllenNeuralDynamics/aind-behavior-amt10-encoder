@@ -2,10 +2,8 @@ using System;
 using System.ComponentModel;
 using System.IO.Ports;
 using System.Reactive.Linq;
-using System.Reactive.Disposables;  // Added for Disposable class
 using System.Text.RegularExpressions;
 using System.Threading;
-using Bonsai; // Correct namespace for Source<> class
 
 namespace Aind.Behavior.Amt10Encoder
 {
@@ -80,9 +78,6 @@ namespace Aind.Behavior.Amt10Encoder
                                 NewLine = "\n"
                             };
                             serialPort.Open();
-                            
-                            // Wait for Arduino to reset - important for reliable communication
-                            Thread.Sleep(2000);
                         }
                     }
                     
@@ -149,9 +144,7 @@ namespace Aind.Behavior.Amt10Encoder
                 if (Debug)
                 {
                     Console.WriteLine("Turning on debugger");
-                    serialPort.Write("9\n");
-                    bool success = WaitForResponse("ON", 150);
-                    if (!success)
+                    if (!SendCommandAndWaitForResponse("9", "ON", 150))
                     {
                         Console.WriteLine("Failed to turn on debugger");
                         return false;
@@ -160,25 +153,30 @@ namespace Aind.Behavior.Amt10Encoder
                 else
                 {
                     Console.WriteLine("Turning off debugger");
-                    serialPort.Write("0\n");
-                    bool success = WaitForResponse("OFF", 150);
-                    if (!success)
+                    if (!SendCommandAndWaitForResponse("0", "OFF", 150))
                     {
                         Console.WriteLine("Failed to turn off debugger");
                         return false;
                     }
                 }
                 
-                // Read MDR0 and STR registers
+                // Read MDR0 and STR
                 Console.WriteLine("Getting mode and status registers");
-                ReadMDR0();
-                ReadSTR();
+                if (!SendCommandAndWaitForResponse("7", "MDR0", 150))
+                {
+                    Console.WriteLine("Failed to read MDR0");
+                    return false;
+                }
                 
-                // Initialize MDR0 register
+                if (!SendCommandAndWaitForResponse("3", "STR", 150))
+                {
+                    Console.WriteLine("Failed to read STR");
+                    return false;
+                }
+                
+                // Initialize MDR0
                 Console.WriteLine("Initializing MDR0");
-                serialPort.Write("8\n");
-                bool mdrSuccess = WaitForResponse("MDR0", 150);
-                if (!mdrSuccess)
+                if (!SendCommandAndWaitForResponse("8", "MDR0", 150))
                 {
                     Console.WriteLine("Failed to initialize MDR0");
                     return false;
@@ -194,9 +192,7 @@ namespace Aind.Behavior.Amt10Encoder
                 
                 // Get decoder version
                 Console.WriteLine("Getting decoder version");
-                serialPort.Write("5\n");
-                bool versionSuccess = WaitForResponse("VERSION", 150);
-                if (!versionSuccess)
+                if (!SendCommandAndWaitForResponse("5", "VERSION", 150))
                 {
                     Console.WriteLine("Failed to get decoder version");
                     return false;
@@ -211,8 +207,10 @@ namespace Aind.Behavior.Amt10Encoder
             }
         }
         
-        private bool WaitForResponse(string expectedResponse, int maxTries)
+        private bool SendCommandAndWaitForResponse(string command, string expectedResponse, int maxTries)
         {
+            serialPort.WriteLine(command);
+            
             int count = 0;
             while (count < maxTries)
             {
@@ -236,78 +234,14 @@ namespace Aind.Behavior.Amt10Encoder
             return false;
         }
         
-        private int? ReadMDR0()
-        {
-            serialPort.Write("7\n");
-            int count = 0;
-            while (count < 150)
-            {
-                try
-                {
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Response: {response}");
-                    
-                    if (response.Contains("MDR0"))
-                    {
-                        var parts = response.Split(':');
-                        if (parts.Length > 1)
-                        {
-                            return int.Parse(parts[1]);
-                        }
-                    }
-                    count++;
-                }
-                catch (TimeoutException)
-                {
-                    count++;
-                }
-            }
-            
-            Console.WriteLine("Could not read MDR0");
-            return null;
-        }
-        
-        private int? ReadSTR()
-        {
-            serialPort.Write("3\n");
-            int count = 0;
-            while (count < 150)
-            {
-                try
-                {
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Response: {response}");
-                    
-                    if (response.Contains("STR"))
-                    {
-                        var parts = response.Split(':');
-                        if (parts.Length > 1)
-                        {
-                            return int.Parse(parts[1]);
-                        }
-                    }
-                    count++;
-                }
-                catch (TimeoutException)
-                {
-                    count++;
-                }
-            }
-            
-            Console.WriteLine("Could not read STR");
-            return null;
-        }
-        
         private bool ClearEncoder()
         {
-            serialPort.Write("2\n");
+            serialPort.WriteLine("2");
             
             int count = 0;
             try
             {
-                // First read after sending command
                 string registerVal = serialPort.ReadLine().TrimEnd('\r', '\n');
-                Console.WriteLine($"Clear response: {registerVal}");
                 
                 // Extract count value from response
                 Match match = Regex.Match(registerVal, ";Count:(-?\\d+)");
@@ -322,8 +256,6 @@ namespace Aind.Behavior.Amt10Encoder
                 while ((countValue > 1000 || countValue < -1000) && count < 150)
                 {
                     string rval = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Waiting for clear: {rval}");
-                    
                     Match newMatch = Regex.Match(rval, ";Count:(-?\\d+)");
                     if (newMatch.Success)
                     {
@@ -334,9 +266,8 @@ namespace Aind.Behavior.Amt10Encoder
                 
                 return count < 150;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"Error clearing encoder: {ex.Message}");
                 return false;
             }
         }
@@ -361,9 +292,8 @@ namespace Aind.Behavior.Amt10Encoder
                                     continueReading = false;
                                 }
                             }
-                            else if (line.Contains(";Index:") && line.Contains(";Count:"))
+                            else
                             {
-                                // Only update current value if it contains both Index and Count
                                 currentValue = line;
                             }
                         }
@@ -397,26 +327,13 @@ namespace Aind.Behavior.Amt10Encoder
             
             try
             {
-                // Parse the data format: ";Index:123;Count:456"
-                string[] parts = data.Split(';');
-                if (parts.Length < 3)
-                {
-                    return new AMT10EncoderReading
-                    {
-                        Index = lastIndex,
-                        Count = lastCount,
-                        Degrees = lastDegrees,
-                        RawData = data
-                    };
-                }
+                var indexMatch = Regex.Match(data, ";Index:(\\d+);");
+                var countMatch = Regex.Match(data, ";Count:(-?\\d+)");
                 
-                string[] indexPart = parts[1].Split(':');
-                string[] countPart = parts[2].Split(':');
-                
-                if (indexPart.Length == 2 && countPart.Length == 2)
+                if (indexMatch.Success && countMatch.Success)
                 {
-                    int index = int.Parse(indexPart[1]);
-                    int count = int.Parse(countPart[1]);
+                    int index = int.Parse(indexMatch.Groups[1].Value);
+                    int count = int.Parse(countMatch.Groups[1].Value);
                     double degrees = (count / CountsPerRevolution) * 360.0;
                     
                     // Store values for future use if there's an error

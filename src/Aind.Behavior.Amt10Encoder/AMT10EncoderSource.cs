@@ -76,7 +76,8 @@ namespace Aind.Behavior.Amt10Encoder
                                 DtrEnable = true,
                                 RtsEnable = true,
                                 ReadTimeout = Timeout,
-                                WriteTimeout = Timeout
+                                WriteTimeout = Timeout,
+                                NewLine = "\n"
                             };
                             serialPort.Open();
                             
@@ -118,7 +119,7 @@ namespace Aind.Behavior.Amt10Encoder
                     };
                     timer.Start();
                     
-                    // Periodically request a counter reading
+                    // Periodically request a counter reading - matching Python's approach of .encode()
                     var readTimer = new System.Timers.Timer(500); // 500ms interval
                     readTimer.Elapsed += (s, e) =>
                     {
@@ -126,8 +127,25 @@ namespace Aind.Behavior.Amt10Encoder
                         {
                             if (serialPort != null && serialPort.IsOpen)
                             {
-                                // Send command 4 to read counter - no newline as in Python code
-                                serialPort.Write("4");
+                                lock (lockObject) // Ensure thread-safe access
+                                {
+                                    serialPort.Write("4"); // Command to read counter - like Python's "4".encode()
+                                    
+                                    // Read the response immediately like Python does
+                                    try
+                                    {
+                                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                                        // Process this response if needed - Python doesn't explicitly process it
+                                        if (Debug)
+                                        {
+                                            Console.WriteLine($"Counter read response: {response}");
+                                        }
+                                    }
+                                    catch (TimeoutException)
+                                    {
+                                        // Ignore timeout when reading response
+                                    }
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -168,34 +186,45 @@ namespace Aind.Behavior.Amt10Encoder
             {
                 // Turn debugger off - exactly like Python implementation
                 Console.WriteLine("Turning off debugger");
-                serialPort.Write("0"); // No newline, just like in Python
-                bool success = WaitForResponse("OFF", 150);
-                if (!success)
+                lock (lockObject)
                 {
-                    Console.WriteLine("Failed to turn off debugger");
-                    return false;
+                    serialPort.Write("0"); // No newline, exactly like Python's "0".encode()
+                    bool success = WaitForResponse("OFF", 150);
+                    if (!success)
+                    {
+                        Console.WriteLine("Failed to turn off debugger");
+                        return false;
+                    }
                 }
                 
-                // Hard reset the counter first
+                // Hard reset the counter first - like Python's "1".encode()
                 Console.WriteLine("Resetting counter chip");
-                serialPort.Write("1"); // Reset command
-                Thread.Sleep(100);
+                lock (lockObject)
+                {
+                    serialPort.Write("1");
+                    Thread.Sleep(100);
+                    
+                    // Read and discard all available data after reset
+                    // This is important as the Python code also reads responses
+                    DrainSerialBuffer();
+                }
                 
-                // Read MDR0 and STR registers
-                Console.WriteLine("Getting MDR0 register");
+                // Read MDR0 and STR registers - like Python
+                Console.WriteLine("Getting MDR0 and STR registers");
                 ReadMDR0();
-                
-                Console.WriteLine("Getting STR register");
                 ReadSTR();
                 
                 // Initialize MDR0 register - critical for quadrature counting
                 Console.WriteLine("Initializing MDR0 register");
-                serialPort.Write("8"); // Set MDR0 register
-                bool mdrSuccess = WaitForResponse("MDR0", 150);
-                if (!mdrSuccess)
+                lock (lockObject)
                 {
-                    Console.WriteLine("Failed to initialize MDR0");
-                    return false;
+                    serialPort.Write("8"); // Set MDR0 register
+                    bool mdrSuccess = WaitForResponse("MDR0", 150);
+                    if (!mdrSuccess)
+                    {
+                        Console.WriteLine("Failed to initialize MDR0");
+                        return false;
+                    }
                 }
                 
                 // Clear encoder
@@ -208,18 +237,25 @@ namespace Aind.Behavior.Amt10Encoder
                 
                 // Get decoder version
                 Console.WriteLine("Getting decoder version");
-                serialPort.Write("5");
-                bool versionSuccess = WaitForResponse("VERSION", 150);
-                if (!versionSuccess)
+                lock (lockObject)
                 {
-                    Console.WriteLine("Failed to get decoder version");
-                    return false;
+                    serialPort.Write("5");
+                    bool versionSuccess = WaitForResponse("VERSION", 150);
+                    if (!versionSuccess)
+                    {
+                        Console.WriteLine("Failed to get decoder version");
+                        return false;
+                    }
                 }
                 
                 // Force read counter to start the counting process
                 Console.WriteLine("Starting encoder read process");
-                serialPort.Write("4");
-                Thread.Sleep(100);
+                lock (lockObject)
+                {
+                    serialPort.Write("4");
+                    Thread.Sleep(100);
+                    DrainSerialBuffer(); // Read any responses to clear buffer
+                }
                 
                 return true;
             }
@@ -227,6 +263,23 @@ namespace Aind.Behavior.Amt10Encoder
             {
                 Console.WriteLine("Error initializing encoder: " + ex.Message);
                 return false;
+            }
+        }
+        
+        private void DrainSerialBuffer()
+        {
+            try
+            {
+                // Read and discard any data sitting in the buffer
+                while (serialPort.BytesToRead > 0)
+                {
+                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                    Console.WriteLine($"Draining: {response}");
+                }
+            }
+            catch (TimeoutException)
+            {
+                // Ignore timeout exceptions during buffer drain
             }
         }
         
@@ -257,108 +310,117 @@ namespace Aind.Behavior.Amt10Encoder
         
         private int? ReadMDR0()
         {
-            serialPort.Write("7"); // Read MDR0 command - no newline
-            int count = 0;
-            while (count < 150)
+            lock (lockObject)
             {
-                try
+                serialPort.Write("7"); // Read MDR0 command - no newline
+                int count = 0;
+                while (count < 150)
                 {
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Response: {response}");
-                    
-                    if (response.Contains("MDR0"))
+                    try
                     {
-                        var parts = response.Split(':');
-                        if (parts.Length > 1)
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Response: {response}");
+                        
+                        if (response.Contains("MDR0"))
                         {
-                            return int.Parse(parts[1]);
+                            var parts = response.Split(':');
+                            if (parts.Length > 1)
+                            {
+                                return int.Parse(parts[1]);
+                            }
                         }
+                        count++;
                     }
-                    count++;
+                    catch (TimeoutException)
+                    {
+                        count++;
+                    }
                 }
-                catch (TimeoutException)
-                {
-                    count++;
-                }
+                
+                Console.WriteLine("Could not read MDR0");
+                return null;
             }
-            
-            Console.WriteLine("Could not read MDR0");
-            return null;
         }
         
         private int? ReadSTR()
         {
-            serialPort.Write("3"); // Read STR command - no newline
-            int count = 0;
-            while (count < 150)
+            lock (lockObject)
             {
-                try
+                serialPort.Write("3"); // Read STR command - no newline
+                int count = 0;
+                while (count < 150)
                 {
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Response: {response}");
-                    
-                    if (response.Contains("STR"))
+                    try
                     {
-                        var parts = response.Split(':');
-                        if (parts.Length > 1)
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Response: {response}");
+                        
+                        if (response.Contains("STR"))
                         {
-                            return int.Parse(parts[1]);
+                            var parts = response.Split(':');
+                            if (parts.Length > 1)
+                            {
+                                return int.Parse(parts[1]);
+                            }
                         }
+                        count++;
                     }
-                    count++;
+                    catch (TimeoutException)
+                    {
+                        count++;
+                    }
                 }
-                catch (TimeoutException)
-                {
-                    count++;
-                }
+                
+                Console.WriteLine("Could not read STR");
+                return null;
             }
-            
-            Console.WriteLine("Could not read STR");
-            return null;
         }
         
         private bool ClearEncoder()
         {
-            serialPort.Write("2"); // Clear counter command - no newline like Python
-            
-            int attempts = 0;
-            int maxAttempts = 3;
-            
-            while (attempts < maxAttempts)
+            lock (lockObject)
             {
-                try
+                serialPort.Write("2"); // Clear counter command - no newline like Python
+                
+                int attempts = 0;
+                int maxAttempts = 3;
+                
+                while (attempts < maxAttempts)
                 {
-                    // First read after sending command
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Clear response: {response}");
-                    
-                    // Extract count value from response if possible
-                    Match match = Regex.Match(response, ";Count:(-?\\d+)");
-                    if (match.Success)
+                    try
                     {
-                        int count = int.Parse(match.Groups[1].Value);
-                        if (Math.Abs(count) < 100)
+                        // First read after sending command
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Clear response: {response}");
+                        
+                        // Extract count value from response if possible
+                        Match match = Regex.Match(response, ";Count:(-?\\d+)");
+                        if (match.Success)
                         {
-                            // Count is close to zero, consider cleared
-                            return true;
+                            int count = int.Parse(match.Groups[1].Value);
+                            if (Math.Abs(count) < 100)
+                            {
+                                // Count is close to zero, consider cleared
+                                return true;
+                            }
                         }
+                        
+                        // If not cleared, try again
+                        serialPort.Write("2");
+                        attempts++;
+                        Thread.Sleep(50);
                     }
-                    
-                    // If not cleared, try again
-                    serialPort.Write("2");
-                    attempts++;
-                    Thread.Sleep(50);
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error clearing encoder: {ex.Message}");
+                        attempts++;
+                        Thread.Sleep(50);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error clearing encoder: {ex.Message}");
-                    attempts++;
-                    Thread.Sleep(50);
-                }
+                
+                // Return true even if we couldn't confirm the clear, to allow continuing
+                return true;
             }
-            
-            // Return true even if we couldn't confirm the clear, to allow continuing
-            return true;
         }
         
         private void ReadEncoderData()
@@ -371,28 +433,46 @@ namespace Aind.Behavior.Amt10Encoder
                 {
                     if (serialPort != null && serialPort.IsOpen)
                     {
-                        string line = serialPort.ReadLine().TrimEnd('\r', '\n');
-                        
-                        if (!string.IsNullOrEmpty(line))
+                        lock (lockObject)
                         {
-                            // More like Python: accept any non-empty data
-                            currentValue = line;
-                            noDataCount = 0;
+                            string line = serialPort.ReadLine().TrimEnd('\r', '\n');
                             
-                            if (Debug && line.Contains(";Count:"))
+                            if (!string.IsNullOrEmpty(line))
                             {
-                                Console.WriteLine($"Encoder data: {line}");
-                            }
-                        }
-                        else
-                        {
-                            noDataCount++;
-                            if (noDataCount > 10)
-                            {
-                                // Too many empty reads, request counter value
-                                serialPort.Write("4");
+                                // More like Python: accept any non-empty data
+                                currentValue = line;
                                 noDataCount = 0;
-                                Thread.Sleep(20);
+                                
+                                if (Debug && line.Contains(";Count:"))
+                                {
+                                    Console.WriteLine($"Encoder data: {line}");
+                                }
+                            }
+                            else
+                            {
+                                noDataCount++;
+                                if (noDataCount > 10)
+                                {
+                                    // Too many empty reads, request counter value
+                                    serialPort.Write("4");
+                                    
+                                    // Read the response to clear the buffer
+                                    try 
+                                    {
+                                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                                        if (Debug)
+                                        {
+                                            Console.WriteLine($"Empty read response: {response}");
+                                        }
+                                    }
+                                    catch (TimeoutException)
+                                    {
+                                        // Ignore timeouts
+                                    }
+                                    
+                                    noDataCount = 0;
+                                    Thread.Sleep(20);
+                                }
                             }
                         }
                     }
@@ -405,8 +485,26 @@ namespace Aind.Behavior.Amt10Encoder
                     {
                         try
                         {
-                            serialPort.Write("4");
-                            noDataCount = 0;
+                            lock (lockObject)
+                            {
+                                serialPort.Write("4");
+                                
+                                // Read the response to clear the buffer
+                                try 
+                                {
+                                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                                    if (Debug)
+                                    {
+                                        Console.WriteLine($"Timeout response: {response}");
+                                    }
+                                }
+                                catch (TimeoutException)
+                                {
+                                    // Ignore timeouts
+                                }
+                                
+                                noDataCount = 0;
+                            }
                         }
                         catch
                         {

@@ -375,12 +375,12 @@ namespace Aind.Behavior.Amt10Encoder
                         
                         if (!string.IsNullOrEmpty(line))
                         {
+                            // More like Python: accept any non-empty data
+                            currentValue = line;
                             noDataCount = 0;
                             
-                            if (line.Contains(";Index:") && line.Contains(";Count:"))
+                            if (Debug && line.Contains(";Count:"))
                             {
-                                // Valid encoder data format
-                                currentValue = line;
                                 Console.WriteLine($"Encoder data: {line}");
                             }
                         }

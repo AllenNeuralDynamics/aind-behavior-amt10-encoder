@@ -82,11 +82,17 @@ namespace Aind.Behavior.Amt10Encoder
                             serialPort.Open();
                             
                             // Wait for Arduino to reset - important for reliable communication
+                            // This matches Python's time.sleep(2) before initialization
+                            Console.WriteLine("Waiting for Arduino to initialize...");
                             Thread.Sleep(2000);
                         }
                     }
                     
-                    // Initialize encoder
+                    // Drain any data in the buffer after Arduino reset
+                    DrainSerialBuffer();
+                    
+                    // Initialize encoder - BEFORE starting the reading thread
+                    // This matches Python's initialization sequence
                     bool initialized = InitializeEncoder();
                     if (!initialized)
                     {
@@ -94,13 +100,14 @@ namespace Aind.Behavior.Amt10Encoder
                         return Disposable.Empty;
                     }
                     
-                    // Start background reading thread
+                    // Only AFTER initialization succeeds, start the background reading thread
+                    // This matches Python's thread start sequence
                     continueReading = true;
                     readingThread = new Thread(ReadEncoderData);
                     readingThread.IsBackground = true;
                     readingThread.Start();
                     
-                    // Start timer to emit readings
+                    // Start timer to emit readings (this emits values based on what the read thread collects)
                     var timer = new System.Timers.Timer(10); // 10ms interval
                     timer.Elapsed += (s, e) =>
                     {

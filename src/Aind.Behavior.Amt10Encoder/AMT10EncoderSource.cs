@@ -88,9 +88,6 @@ namespace Aind.Behavior.Amt10Encoder
                         }
                     }
                     
-                    // Drain any data in the buffer after Arduino reset
-                    DrainSerialBuffer();
-                    
                     // Initialize encoder - BEFORE starting the reading thread
                     // This matches Python's initialization sequence
                     bool initialized = InitializeEncoder();
@@ -226,6 +223,9 @@ namespace Aind.Behavior.Amt10Encoder
                         return false;
                     }
                 }
+                
+                // Drain any data in the buffer after Arduino reset
+                DrainSerialBuffer();
                 
                 // Python does NOT send command "4" during initialization
                 // The Arduino firmware automatically sends encoder data

@@ -165,24 +165,11 @@ namespace Aind.Behavior.Amt10Encoder
                     }
                 }
                 
-                // Clear encoder FIRST - exactly like Python does
-                Console.WriteLine("Clearing encoder counter");
-                lock (lockObject)
-                {
-                    serialPort.Write("2"); // Clear counter command - Python does this BEFORE setting MDR0
-                    Thread.Sleep(100);
-                    
-                    // Read response
-                    try
-                    {
-                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                        Console.WriteLine($"Clear response: {response}");
-                    }
-                    catch (TimeoutException)
-                    {
-                        Console.WriteLine("No response to clear command");
-                    }
-                }
+                // Get mode and status registers - this comes BEFORE initializing MDR0 in Python
+                Console.WriteLine("Getting mode and status registers");
+                var mdr0 = ReadMDR0();
+                var str = ReadSTR();
+                Console.WriteLine($"Initial MDR0: {mdr0}, STR: {str}");
                 
                 // Initialize MDR0 register - critical for quadrature counting
                 Console.WriteLine("Initializing MDR0 register");
@@ -194,6 +181,36 @@ namespace Aind.Behavior.Amt10Encoder
                     {
                         Console.WriteLine("Failed to initialize MDR0");
                         return false;
+                    }
+                }
+                
+                // Clear encoder - Python does this AFTER setting MDR0
+                Console.WriteLine("Clearing encoder counter");
+                lock (lockObject)
+                {
+                    serialPort.Write("2"); // Clear counter command
+                    Thread.Sleep(100);
+                    
+                    // Read response and verify count is close to zero like Python does
+                    try
+                    {
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Clear response: {response}");
+                        
+                        // Extract count value to make sure it's close to zero
+                        Match match = Regex.Match(response, ";Count:(-?\\d+)");
+                        if (match.Success)
+                        {
+                            int count = int.Parse(match.Groups[1].Value);
+                            if (Math.Abs(count) > 1000)
+                            {
+                                Console.WriteLine($"Warning: Count not close to zero after clear: {count}");
+                            }
+                        }
+                    }
+                    catch (TimeoutException)
+                    {
+                        Console.WriteLine("No response to clear command");
                     }
                 }
                 

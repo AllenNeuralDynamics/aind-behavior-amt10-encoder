@@ -119,49 +119,10 @@ namespace Aind.Behavior.Amt10Encoder
                     };
                     timer.Start();
                     
-                    // Periodically request a counter reading - matching Python's approach of .encode()
-                    var readTimer = new System.Timers.Timer(500); // 500ms interval
-                    readTimer.Elapsed += (s, e) =>
-                    {
-                        try
-                        {
-                            if (serialPort != null && serialPort.IsOpen)
-                            {
-                                lock (lockObject) // Ensure thread-safe access
-                                {
-                                    serialPort.Write("4"); // Command to read counter - like Python's "4".encode()
-                                    
-                                    // Read the response immediately like Python does
-                                    try
-                                    {
-                                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                                        // Process this response if needed - Python doesn't explicitly process it
-                                        if (Debug)
-                                        {
-                                            Console.WriteLine($"Counter read response: {response}");
-                                        }
-                                    }
-                                    catch (TimeoutException)
-                                    {
-                                        // Ignore timeout when reading response
-                                    }
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Error requesting counter value: {ex.Message}");
-                        }
-                    };
-                    readTimer.Start();
-                    
                     return Disposable.Create(() =>
                     {
                         timer.Stop();
                         timer.Dispose();
-                        
-                        readTimer.Stop();
-                        readTimer.Dispose();
                         
                         continueReading = false;
                         if (readingThread != null && readingThread.IsAlive)
@@ -242,15 +203,8 @@ namespace Aind.Behavior.Amt10Encoder
                     }
                 }
                 
-                // Force read counter to start the counting process
-                Console.WriteLine("Starting encoder read process");
-                lock (lockObject)
-                {
-                    serialPort.Write("4");
-                    Thread.Sleep(100);
-                    DrainSerialBuffer(); // Read any responses to clear buffer
-                }
-                
+                // Python does NOT send command "4" during initialization
+                // The Arduino firmware automatically sends encoder data
                 return true;
             }
             catch (Exception ex)
@@ -420,8 +374,6 @@ namespace Aind.Behavior.Amt10Encoder
         
         private void ReadEncoderData()
         {
-            int noDataCount = 0;
-            
             while (continueReading)
             {
                 try
@@ -434,39 +386,12 @@ namespace Aind.Behavior.Amt10Encoder
                             
                             if (!string.IsNullOrEmpty(line))
                             {
-                                // More like Python: accept any non-empty data
+                                // Store any non-empty data like Python does
                                 currentValue = line;
-                                noDataCount = 0;
                                 
                                 if (Debug && line.Contains(";Count:"))
                                 {
                                     Console.WriteLine($"Encoder data: {line}");
-                                }
-                            }
-                            else
-                            {
-                                noDataCount++;
-                                if (noDataCount > 10)
-                                {
-                                    // Too many empty reads, request counter value
-                                    serialPort.Write("4");
-                                    
-                                    // Read the response to clear the buffer
-                                    try 
-                                    {
-                                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                                        if (Debug)
-                                        {
-                                            Console.WriteLine($"Empty read response: {response}");
-                                        }
-                                    }
-                                    catch (TimeoutException)
-                                    {
-                                        // Ignore timeouts
-                                    }
-                                    
-                                    noDataCount = 0;
-                                    Thread.Sleep(20);
                                 }
                             }
                         }
@@ -474,38 +399,8 @@ namespace Aind.Behavior.Amt10Encoder
                 }
                 catch (TimeoutException)
                 {
-                    // Ignore timeout, but consider requesting data if we time out too often
-                    noDataCount++;
-                    if (noDataCount > 5)
-                    {
-                        try
-                        {
-                            lock (lockObject)
-                            {
-                                serialPort.Write("4");
-                                
-                                // Read the response to clear the buffer
-                                try 
-                                {
-                                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                                    if (Debug)
-                                    {
-                                        Console.WriteLine($"Timeout response: {response}");
-                                    }
-                                }
-                                catch (TimeoutException)
-                                {
-                                    // Ignore timeouts
-                                }
-                                
-                                noDataCount = 0;
-                            }
-                        }
-                        catch
-                        {
-                            // Ignore errors when requesting data
-                        }
-                    }
+                    // Just ignore timeout exceptions, like Python does
+                    Thread.Sleep(10);
                 }
                 catch (Exception ex)
                 {

@@ -4,7 +4,7 @@
     <Description>Bonsai Library for interfacing with AMT10 series quadrature encoders via Arduino.</Description>
     <PackageTags>Bonsai;AMT10;Encoder;Arduino;Allen Institute;AIND</PackageTags>
     <TargetFramework>net472</TargetFramework>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <Authors>Allen Institute for Neural Dynamics</Authors>
     <Company>Allen Institute for Neural Dynamics</Company>
     <AssemblyName>Aind.Behavior.Amt10Encoder</AssemblyName>

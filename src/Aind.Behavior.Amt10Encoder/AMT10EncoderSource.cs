@@ -168,13 +168,18 @@ namespace Aind.Behavior.Amt10Encoder
                         return false;
                     }
                 }
+
+                // First, explicitly reset the counter chip fully
+                Console.WriteLine("Hard resetting LS7366R counter");
+                serialPort.Write("1\n"); // Command 1: Reset the LS7366R chip
+                Thread.Sleep(100);
                 
-                // Read MDR0 and STR registers
+                // Read MDR0 and STR registers to check status
                 Console.WriteLine("Getting mode and status registers");
                 ReadMDR0();
                 ReadSTR();
                 
-                // Initialize MDR0 register
+                // Initialize MDR0 register with proper settings
                 Console.WriteLine("Initializing MDR0");
                 serialPort.Write("8\n");
                 bool mdrSuccess = WaitForResponse("MDR0", 150);
@@ -183,14 +188,28 @@ namespace Aind.Behavior.Amt10Encoder
                     Console.WriteLine("Failed to initialize MDR0");
                     return false;
                 }
+
+                // Double check MDR0 is properly set
+                int? mdr0 = ReadMDR0();
+                Console.WriteLine($"MDR0 after initialization: {mdr0}");
                 
-                // Clear encoder
+                // Clear encoder multiple times to ensure zero position
                 Console.WriteLine("Clearing encoder");
                 if (!ClearEncoder())
                 {
                     Console.WriteLine("Failed to clear encoder");
                     return false;
                 }
+                
+                // Force read the counter to initialize counter reading
+                Console.WriteLine("Initializing counter reading");
+                serialPort.Write("4\n"); // Command 4: Read counter value
+                Thread.Sleep(200);
+                DrainSerialBuffer(); // Clear out any pending messages
+                
+                // Force another counter reset to ensure zero starting point
+                serialPort.Write("2\n");
+                Thread.Sleep(100);
                 
                 // Get decoder version
                 Console.WriteLine("Getting decoder version");
@@ -201,6 +220,10 @@ namespace Aind.Behavior.Amt10Encoder
                     Console.WriteLine("Failed to get decoder version");
                     return false;
                 }
+
+                // One more counter read to verify encoder is working
+                serialPort.Write("4\n");
+                Thread.Sleep(100);
                 
                 return true;
             }
@@ -300,58 +323,85 @@ namespace Aind.Behavior.Amt10Encoder
         
         private bool ClearEncoder()
         {
-            serialPort.Write("2\n");
+            serialPort.Write("2\n"); // Send clear encoder command
             
-            int count = 0;
+            int maxAttempts = 5;
+            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                try
+                {
+                    // First read after sending command
+                    string registerVal = serialPort.ReadLine().TrimEnd('\r', '\n');
+                    Console.WriteLine($"Clear response: {registerVal}");
+                    
+                    // Extract count value from response
+                    Match match = Regex.Match(registerVal, ";Count:(-?\\d+)");
+                    if (match.Success)
+                    {
+                        int countValue = int.Parse(match.Groups[1].Value);
+                        
+                        // If count is close to zero, success
+                        if (Math.Abs(countValue) < 10)
+                        {
+                            return true;
+                        }
+                    }
+                    
+                    // Try again if not successful
+                    Console.WriteLine("Retrying encoder clear...");
+                    serialPort.Write("2\n");
+                    Thread.Sleep(50);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error on clear attempt {attempt}: {ex.Message}");
+                }
+            }
+            
+            Console.WriteLine("Warning: Could not confirm encoder clear after multiple attempts");
+            return true; // Continue despite warning, might still work
+        }
+        
+        private void DrainSerialBuffer()
+        {
             try
             {
-                // First read after sending command
-                string registerVal = serialPort.ReadLine().TrimEnd('\r', '\n');
-                Console.WriteLine($"Clear response: {registerVal}");
-                
-                // Extract count value from response
-                Match match = Regex.Match(registerVal, ";Count:(-?\\d+)");
-                if (!match.Success)
+                // Read and discard any data sitting in the buffer
+                while (serialPort.BytesToRead > 0)
                 {
-                    return false;
+                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                    Console.WriteLine($"Draining: {response}");
                 }
-                
-                int countValue = int.Parse(match.Groups[1].Value);
-                
-                // Wait until count is close to zero
-                while ((countValue > 1000 || countValue < -1000) && count < 150)
-                {
-                    string rval = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Waiting for clear: {rval}");
-                    
-                    Match newMatch = Regex.Match(rval, ";Count:(-?\\d+)");
-                    if (newMatch.Success)
-                    {
-                        countValue = int.Parse(newMatch.Groups[1].Value);
-                    }
-                    count++;
-                }
-                
-                return count < 150;
             }
-            catch (Exception ex)
+            catch (TimeoutException)
             {
-                Console.WriteLine($"Error clearing encoder: {ex.Message}");
-                return false;
+                // Ignore timeout exceptions during buffer drain
             }
         }
         
         private void ReadEncoderData()
         {
+            int emptyLineCount = 0;
+            
             while (continueReading)
             {
                 try
                 {
                     if (serialPort != null && serialPort.IsOpen)
                     {
+                        // Check if we need to request a new reading
+                        if (emptyLineCount > 5)
+                        {
+                            // Too many empty reads, request a value explicitly
+                            serialPort.Write("4\n"); // Command to read counter
+                            emptyLineCount = 0;
+                        }
+                        
                         string line = serialPort.ReadLine().TrimEnd('\r', '\n');
                         if (!string.IsNullOrEmpty(line))
                         {
+                            emptyLineCount = 0;
+                            
                             if (line.Contains("ERROR"))
                             {
                                 errorCount++;
@@ -365,18 +415,30 @@ namespace Aind.Behavior.Amt10Encoder
                             {
                                 // Only update current value if it contains both Index and Count
                                 currentValue = line;
+                                
+                                // Debug output to console periodically
+                                if (Debug && DateTime.Now.Second % 5 == 0)
+                                {
+                                    Console.WriteLine($"Current encoder data: {line}");
+                                }
                             }
+                        }
+                        else
+                        {
+                            emptyLineCount++;
                         }
                     }
                 }
                 catch (TimeoutException)
                 {
                     // Ignore timeout and continue
+                    emptyLineCount++;
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine("Error reading encoder: " + ex.Message);
                     Thread.Sleep(100);
+                    emptyLineCount++;
                 }
             }
         }

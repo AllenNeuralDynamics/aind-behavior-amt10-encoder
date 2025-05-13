@@ -197,42 +197,36 @@ namespace Aind.Behavior.Amt10Encoder
                     }
                 }
                 
-                // Hard reset the counter first - like Python's "1".encode()
-                Console.WriteLine("Resetting counter chip");
+                // Clear encoder FIRST - exactly like Python does
+                Console.WriteLine("Clearing encoder counter");
                 lock (lockObject)
                 {
-                    serialPort.Write("1");
+                    serialPort.Write("2"); // Clear counter command - Python does this BEFORE setting MDR0
                     Thread.Sleep(100);
                     
-                    // Read and discard all available data after reset
-                    // This is important as the Python code also reads responses
-                    DrainSerialBuffer();
+                    // Read response
+                    try
+                    {
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Clear response: {response}");
+                    }
+                    catch (TimeoutException)
+                    {
+                        Console.WriteLine("No response to clear command");
+                    }
                 }
-                
-                // Read MDR0 and STR registers - like Python
-                Console.WriteLine("Getting MDR0 and STR registers");
-                ReadMDR0();
-                ReadSTR();
                 
                 // Initialize MDR0 register - critical for quadrature counting
                 Console.WriteLine("Initializing MDR0 register");
                 lock (lockObject)
                 {
-                    serialPort.Write("8"); // Set MDR0 register
+                    serialPort.Write("8"); // Set MDR0 register - like Python
                     bool mdrSuccess = WaitForResponse("MDR0", 150);
                     if (!mdrSuccess)
                     {
                         Console.WriteLine("Failed to initialize MDR0");
                         return false;
                     }
-                }
-                
-                // Clear encoder
-                Console.WriteLine("Clearing encoder counter");
-                if (!ClearEncoder())
-                {
-                    Console.WriteLine("Failed to clear encoder");
-                    return false;
                 }
                 
                 // Get decoder version
@@ -271,6 +265,7 @@ namespace Aind.Behavior.Amt10Encoder
             try
             {
                 // Read and discard any data sitting in the buffer
+                // This is critical for reliable command handling and avoiding command/response desync
                 while (serialPort.BytesToRead > 0)
                 {
                     string response = serialPort.ReadLine().TrimEnd('\r', '\n');

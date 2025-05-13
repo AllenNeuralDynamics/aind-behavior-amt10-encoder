@@ -3,7 +3,7 @@ using System.ComponentModel;
 using System.IO.Ports;
 using System.Reactive.Linq;
 using System.Text.RegularExpressions;
-using Bonsai; // Correct namespace for Sink<> class
+using Bonsai;
 
 namespace Aind.Behavior.Amt10Encoder
 {
@@ -48,8 +48,7 @@ namespace Aind.Behavior.Amt10Encoder
                         DtrEnable = true,
                         RtsEnable = true,
                         ReadTimeout = Timeout,
-                        WriteTimeout = Timeout,
-                        NewLine = "\n"
+                        WriteTimeout = Timeout
                     })
                     {
                         serialPort.Open();
@@ -57,41 +56,69 @@ namespace Aind.Behavior.Amt10Encoder
                         // Wait for Arduino to initialize
                         System.Threading.Thread.Sleep(100);
                         
-                        Console.WriteLine("Sending reset command to encoder");
-                        serialPort.Write("2\n"); // Clear encoder command with newline
+                        // Step 1: First reset the LS7366R chip
+                        Console.WriteLine("Resetting LS7366R chip");
+                        serialPort.Write("1");  // Send reset command without newline
+                        System.Threading.Thread.Sleep(100);
                         
-                        // Wait for a response to confirm the reset
-                        int attempts = 0;
-                        while (attempts < 50)
+                        // Read and discard any pending messages
+                        while (serialPort.BytesToRead > 0)
                         {
-                            try
-                            {
-                                string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                                Console.WriteLine($"Response: {response}");
-                                
-                                // Check for expected response format with Count field
-                                Match match = Regex.Match(response, ";Count:(-?\\d+)");
-                                if (match.Success)
-                                {
-                                    int count = int.Parse(match.Groups[1].Value);
-                                    if (Math.Abs(count) < 1000)
-                                    {
-                                        Console.WriteLine($"Encoder reset successful. Count: {count}");
-                                        break;
-                                    }
-                                }
-                            }
-                            catch (TimeoutException)
-                            {
-                                // Continue trying on timeout
-                            }
-                            
-                            attempts++;
+                            string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                            Console.WriteLine($"Reset response: {response}");
                         }
                         
-                        if (attempts >= 50)
+                        // Step 2: Clear encoder counter multiple times to ensure it's zeroed
+                        Console.WriteLine("Clearing encoder counter");
+                        for (int i = 0; i < 3; i++)
                         {
-                            Console.WriteLine("Warning: Could not confirm encoder reset");
+                            serialPort.Write("2");  // Send clear command without newline
+                            System.Threading.Thread.Sleep(50);
+                            
+                            bool success = false;
+                            int attempts = 0;
+                            while (attempts < 10 && !success)
+                            {
+                                try
+                                {
+                                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                                    Console.WriteLine($"Clear response: {response}");
+                                    
+                                    // Check for expected response format
+                                    Match match = Regex.Match(response, ";Count:(-?\\d+)");
+                                    if (match.Success)
+                                    {
+                                        int count = int.Parse(match.Groups[1].Value);
+                                        if (Math.Abs(count) < 100)
+                                        {
+                                            success = true;
+                                            Console.WriteLine($"Encoder successfully cleared. Count: {count}");
+                                        }
+                                    }
+                                }
+                                catch (TimeoutException)
+                                {
+                                    // Continue trying on timeout
+                                }
+                                
+                                attempts++;
+                            }
+                            
+                            if (success) break;
+                        }
+                        
+                        // Step 3: Force read the counter to verify it's cleared
+                        serialPort.Write("4");
+                        System.Threading.Thread.Sleep(50);
+                        
+                        try
+                        {
+                            string finalReading = serialPort.ReadLine().TrimEnd('\r', '\n');
+                            Console.WriteLine($"Final reading after reset: {finalReading}");
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine("No response from counter after reset");
                         }
                     }
                 }

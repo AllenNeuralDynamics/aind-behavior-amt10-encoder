@@ -97,6 +97,11 @@ namespace Aind.Behavior.Amt10Encoder
                         return Disposable.Empty;
                     }
                     
+                    // Add a short delay after initialization to ensure the Arduino is ready
+                    // This gives the Arduino time to settle after all initialization commands
+                    Console.WriteLine("Waiting for Arduino to stabilize after initialization...");
+                    Thread.Sleep(1000); // Increased from 500ms to 1000ms for better reliability
+                    
                     // Only AFTER initialization succeeds, start the background reading thread
                     // This matches Python's thread start sequence
                     continueReading = true;

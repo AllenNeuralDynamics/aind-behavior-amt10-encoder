@@ -247,12 +247,15 @@ namespace Aind.Behavior.Amt10Encoder
         {
             try
             {
-                // Read and discard any data sitting in the buffer
-                // This is critical for reliable command handling and avoiding command/response desync
-                while (serialPort.BytesToRead > 0)
+                lock (lockObject) // Added lock for thread safety
                 {
-                    string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                    Console.WriteLine($"Draining: {response}");
+                    // Read and discard any data sitting in the buffer
+                    // This is critical for reliable command handling and avoiding command/response desync
+                    while (serialPort.BytesToRead > 0)
+                    {
+                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                        Console.WriteLine($"Draining: {response}");
+                    }
                 }
             }
             catch (TimeoutException)

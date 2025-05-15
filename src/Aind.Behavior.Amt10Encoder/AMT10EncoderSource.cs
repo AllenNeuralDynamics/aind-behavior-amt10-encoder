@@ -84,7 +84,7 @@ namespace Aind.Behavior.Amt10Encoder
                             // Wait for Arduino to reset - important for reliable communication
                             // This matches Python's time.sleep(2) before initialization
                             Console.WriteLine("Waiting for Arduino to initialize...");
-                            Thread.Sleep(2000);
+                            Thread.Sleep(1000);
                         }
                     }
                     

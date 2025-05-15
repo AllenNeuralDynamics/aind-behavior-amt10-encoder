@@ -357,53 +357,6 @@ namespace Aind.Behavior.Amt10Encoder
             }
         }
         
-        private bool ClearEncoder()
-        {
-            lock (lockObject)
-            {
-                serialPort.Write("2"); // Clear counter command - no newline like Python
-                
-                int attempts = 0;
-                int maxAttempts = 3;
-                
-                while (attempts < maxAttempts)
-                {
-                    try
-                    {
-                        // First read after sending command
-                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                        Console.WriteLine($"Clear response: {response}");
-                        
-                        // Extract count value from response if possible
-                        Match match = Regex.Match(response, ";Count:(-?\\d+)");
-                        if (match.Success)
-                        {
-                            int count = int.Parse(match.Groups[1].Value);
-                            if (Math.Abs(count) < 100)
-                            {
-                                // Count is close to zero, consider cleared
-                                return true;
-                            }
-                        }
-                        
-                        // If not cleared, try again
-                        serialPort.Write("2");
-                        attempts++;
-                        Thread.Sleep(50);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error clearing encoder: {ex.Message}");
-                        attempts++;
-                        Thread.Sleep(50);
-                    }
-                }
-                
-                // Return true even if we couldn't confirm the clear, to allow continuing
-                return true;
-            }
-        }
-        
         private void ReadEncoderData()
         {
             while (continueReading)

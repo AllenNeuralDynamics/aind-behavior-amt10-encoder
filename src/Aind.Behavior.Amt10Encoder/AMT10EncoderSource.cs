@@ -21,6 +21,8 @@ namespace Aind.Behavior.Amt10Encoder
         private volatile string currentValue;
         private readonly object lockObject = new object();
         private int errorCount = 0;
+        private int badReadsCount = 0;  // Track consecutive bad reads
+        private const int MaxBadReads = 10;  // Maximum allowable consecutive bad reads
         private int lastIndex = 0;
         private int lastCount = 0;
         private double lastDegrees = 0;
@@ -178,10 +180,46 @@ namespace Aind.Behavior.Amt10Encoder
                 lock (lockObject)
                 {
                     serialPort.Write("8"); // Set MDR0 register - like Python
-                    bool mdrSuccess = WaitForResponse("MDR0", 150);
-                    if (!mdrSuccess)
+                    
+                    // Wait for response containing "MDR0"
+                    int count = 0;
+                    bool mdrValueCorrect = false;
+                    while (count < 150 && !mdrValueCorrect)
                     {
-                        Console.WriteLine("Failed to initialize MDR0");
+                        try
+                        {
+                            string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                            Console.WriteLine($"MDR0 Response: {response}");
+                            
+                            if (response.Contains("MDR0"))
+                            {
+                                // Extract the value to verify it's 3 (like Python does)
+                                var parts = response.Split(':');
+                                if (parts.Length > 1 && int.TryParse(parts[1], out int mdrValue))
+                                {
+                                    if (mdrValue == 3)
+                                    {
+                                        Console.WriteLine("MDR0 correctly set to 3");
+                                        mdrValueCorrect = true;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"Error: MDR0 not set to expected value 3, got {mdrValue} instead");
+                                        return false;
+                                    }
+                                }
+                            }
+                            count++;
+                        }
+                        catch (TimeoutException)
+                        {
+                            count++;
+                        }
+                    }
+                    
+                    if (!mdrValueCorrect)
+                    {
+                        Console.WriteLine("Failed to initialize or verify MDR0");
                         return false;
                     }
                 }
@@ -191,28 +229,75 @@ namespace Aind.Behavior.Amt10Encoder
                 lock (lockObject)
                 {
                     serialPort.Write("2"); // Clear counter command
-                    Thread.Sleep(100);
                     
-                    // Read response and verify count is close to zero like Python does
-                    try
+                    // First look for command acknowledgment
+                    bool cmdAcknowledged = false;
+                    int cmdAttempts = 0;
+                    while (!cmdAcknowledged && cmdAttempts < 50)
                     {
-                        string response = serialPort.ReadLine().TrimEnd('\r', '\n');
-                        Console.WriteLine($"Clear response: {response}");
-                        
-                        // Extract count value to make sure it's close to zero
-                        Match match = Regex.Match(response, ";Count:(-?\\d+)");
-                        if (match.Success)
+                        try
                         {
-                            int count = int.Parse(match.Groups[1].Value);
-                            if (Math.Abs(count) > 1000)
+                            string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                            Console.WriteLine($"Response: {response}");
+                            
+                            if (response.Contains("CMD"))
                             {
-                                Console.WriteLine($"Warning: Count not close to zero after clear: {count}");
+                                Console.WriteLine("Clear command acknowledged");
+                                cmdAcknowledged = true;
                             }
+                            cmdAttempts++;
+                        }
+                        catch (TimeoutException)
+                        {
+                            cmdAttempts++;
+                            Thread.Sleep(10);
                         }
                     }
-                    catch (TimeoutException)
+                    
+                    if (!cmdAcknowledged)
                     {
-                        Console.WriteLine("No response to clear command");
+                        Console.WriteLine("Warning: Clear command may not have been acknowledged");
+                    }
+                    
+                    // Now read encoder response and verify count is close to zero
+                    int attempts = 0;
+                    bool clearSuccessful = false;
+                    while (!clearSuccessful && attempts < 10)
+                    {
+                        try
+                        {
+                            string response = serialPort.ReadLine().TrimEnd('\r', '\n');
+                            Console.WriteLine($"Clear response: {response}");
+                            
+                            // Extract count value to make sure it's close to zero
+                            Match match = Regex.Match(response, ";Count:(-?\\d+)");
+                            if (match.Success)
+                            {
+                                int count = int.Parse(match.Groups[1].Value);
+                                if (Math.Abs(count) < 100)
+                                {
+                                    clearSuccessful = true;
+                                    Console.WriteLine($"Encoder cleared successfully. Count: {count}");
+                                }
+                                else if (Math.Abs(count) > 1000)
+                                {
+                                    Console.WriteLine($"Warning: Count not close to zero after clear: {count}");
+                                    // Try clearing again
+                                    serialPort.Write("2");
+                                    Thread.Sleep(50);
+                                }
+                            }
+                        }
+                        catch (TimeoutException)
+                        {
+                            Console.WriteLine("Timeout waiting for clear response");
+                        }
+                        attempts++;
+                    }
+                    
+                    if (!clearSuccessful)
+                    {
+                        Console.WriteLine("Warning: Could not verify encoder was cleared to zero");
                     }
                 }
                 
@@ -400,6 +485,21 @@ namespace Aind.Behavior.Amt10Encoder
             string data = currentValue;
             if (string.IsNullOrEmpty(data))
             {
+                // Only increment badReadsCount for empty data after initialization period
+                if (badReadsCount > 0 || lastCount != 0 || lastIndex != 0)
+                {
+                    badReadsCount++;
+                    if (badReadsCount % 5 == 0)  // Log every 5th bad read
+                    {
+                        Console.WriteLine($"Warning: Received {badReadsCount} consecutive empty or invalid encoder readings");
+                    }
+                }
+                
+                if (badReadsCount > MaxBadReads)
+                {
+                    Console.WriteLine($"Error: Received {badReadsCount} consecutive empty or invalid readings. Check encoder connection.");
+                }
+                
                 return new AMT10EncoderReading
                 {
                     Index = lastIndex,
@@ -409,13 +509,37 @@ namespace Aind.Behavior.Amt10Encoder
                 };
             }
             
+            if (data.Contains("ERROR"))
+            {
+                errorCount++;
+                Console.WriteLine($"Arduino error detected: {data}, count: {errorCount}");
+                if (errorCount >= 5)
+                {
+                    Console.WriteLine("Critical: Multiple errors detected from Arduino. Check hardware.");
+                }
+                return new AMT10EncoderReading
+                {
+                    Index = lastIndex,
+                    Count = lastCount,
+                    Degrees = lastDegrees,
+                    RawData = data
+                };
+            }
+            
             try
             {
                 // Parse the data format: ";Index:123;Count:456"
                 string[] parts = data.Split(';');
                 if (parts.Length < 3)
                 {
-                    Console.WriteLine($"Invalid data format: {data}");
+                    badReadsCount++;
+                    Console.WriteLine($"Invalid data format: {data}, bad reads: {badReadsCount}");
+                    
+                    if (badReadsCount > MaxBadReads)
+                    {
+                        Console.WriteLine($"Critical: Maximum bad reads ({MaxBadReads}) exceeded. Check encoder connection.");
+                    }
+                    
                     return new AMT10EncoderReading
                     {
                         Index = lastIndex,
@@ -445,7 +569,11 @@ namespace Aind.Behavior.Amt10Encoder
                 {
                     int index = int.Parse(indexPart.Substring("Index:".Length));
                     int count = int.Parse(countPart.Substring("Count:".Length));
-                    double degrees = (count / CountsPerRevolution) * 360.0;
+                    // Fix: Cast count to double before division to avoid integer division
+                    double degrees = ((double)count / CountsPerRevolution) * 360.0;
+                    
+                    // Valid reading received, reset error counters
+                    badReadsCount = 0;
                     
                     // Store values for future use if there's an error
                     lastIndex = index;
@@ -461,10 +589,21 @@ namespace Aind.Behavior.Amt10Encoder
                         RawData = data
                     };
                 }
+                else
+                {
+                    badReadsCount++;
+                    Console.WriteLine($"Missing Index or Count in data: {data}, bad reads: {badReadsCount}");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error parsing encoder data: {ex.Message}, Data: {data}");
+                badReadsCount++;
+                Console.WriteLine($"Error parsing encoder data: {ex.Message}, Data: {data}, bad reads: {badReadsCount}");
+            }
+            
+            if (badReadsCount > MaxBadReads)
+            {
+                Console.WriteLine($"Critical: Maximum bad reads ({MaxBadReads}) exceeded. Check encoder connection and Arduino firmware.");
             }
             
             // Return last valid reading on error

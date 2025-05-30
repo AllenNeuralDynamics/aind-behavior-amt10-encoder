@@ -85,4 +85,4 @@ jobs:
     - name: Publish to NuGet
       if: ${{ github.event.inputs.publish == 'true' }}
       run: |
-        dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+        dotnet nuget push ./nupkg/Aind.Behavior.Amt10Encoder.${{ steps.get_version.outputs.version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -71,6 +71,23 @@ The extension communicates with an Arduino running the LS7366R_quadrature_counte
 
 For details on the protocol implementation, see the [reference Python implementation](reference/AMT10_quadrature_encoder.py).
 
+## Deployment
+
+This package is automatically deployed to NuGet.org via a GitHub Actions workflow when a new tag is created on the `main` branch.
+
+To trigger a deployment:
+
+1.  Ensure the `Version` property in `src/Aind.Behavior.Amt10Encoder/Aind.Behavior.Amt10Encoder.csproj` is updated to the desired new version.
+2.  Commit and push any changes to the `main` branch.
+3.  Manually trigger the "Tag and Publish" workflow in the Actions tab of the GitHub repository.
+    *   Set the "Publish to NuGet" input to `true`.
+    *   The workflow will:
+        *   Read the version from the `.csproj` file.
+        *   Create a new Git tag in the format `v<version>`.
+        *   Build the project.
+        *   Pack the NuGet package.
+        *   Push the package to NuGet.org using the `NUGET_API_KEY` repository secret.
+
 ## Reference Implementation
 
 This Bonsai extension is based on the Python implementation used in the Allen Institute's camstim software. The original code has been included in the [reference directory](reference/) for documentation purposes.

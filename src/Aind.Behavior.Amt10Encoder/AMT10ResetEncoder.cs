@@ -34,7 +34,6 @@ namespace Aind.Behavior.Amt10Encoder
         /// <summary>
         /// Sends the reset command to the encoder whenever the observable sequence emits a notification.
         /// </summary>
-        /// <typeparam name="TSource">The type of the elements in the source sequence.</typeparam>
         /// <param name="source">The sequence of notifications used to trigger the reset command.</param>
         /// <returns>The source sequence.</returns>
         public override IObservable<object> Process(IObservable<object> source)
